@@ -1,49 +1,70 @@
 import requests
 import smtplib
 from email.mime.text import MIMEText
+import os
 
 # GitHub API URL for the repository content
-GITHUB_REPO_API = "https://api.github.com/repos/Cantzy07/job-scraper/commits"
+GITHUB_REPO_API = "https://api.github.com/repos/speedyapply/2026-AI-College-Jobs/commits?path=NEW_GRAD_USA.md"
 
-# Load previous commit hash
+# Use a fixed path next to this script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LAST_FILE = os.path.join(BASE_DIR, "last_commit.txt")
+CREDS_FILE = os.path.join(BASE_DIR, "credentials.txt")
+
 def load_last_commit():
     try:
-        with open("last_commit.txt", "r") as f:
+        with open(LAST_FILE, "r") as f:
             return f.read().strip()
     except FileNotFoundError:
         return None
 
-# Save latest commit hash
 def save_last_commit(commit_hash):
-    with open("last_commit.txt", "w") as f:
+    with open(LAST_FILE, "w") as f:
         f.write(commit_hash)
 
-# check for updates
 def check_for_updates():
-    response = requests.get(GITHUB_REPO_API)
+    try:
+        resp = requests.get(GITHUB_REPO_API, timeout=15)
+    except Exception as e:
+        print(f"Request error: {e}")
+        return None
 
-    if response.status_code == 200:
-        commits = response.json()
-        latest_commit = commits[0]
-        latest_sha = latest_commit['sha']
-        last_commit = load_last_commit()
+    if resp.status_code != 200:
+        print(f"GitHub API error: {resp.status_code} | {resp.text[:300]}")
+        return None
 
-        if last_commit != latest_sha:
-            save_last_commit(latest_sha)
+    commits = resp.json()
+    if not isinstance(commits, list) or not commits:
+        print("No commits returned for the file.")
+        return None
 
-            commit_msg = latest_commit['commit']['message']
-            author = latest_commit['commit']['author']['name']
-            date = latest_commit['commit']['author']['date']
-            commit_url = latest_commit['html_url']  # Link to the commit
+    latest = commits[0]
+    latest_sha = latest.get("sha")
+    if not latest_sha:
+        print("Latest commit SHA missing.")
+        return None
 
-            # Return a summary of the change
-            return f"New commit by {author} on {date}:\n\n\"{commit_msg}\"\n\nView the change: {commit_url}"
+    last_sha = load_last_commit()
 
-    return None  # No changes
+    # First run: persist the current SHA so the file always exists
+    if last_sha is None:
+        save_last_commit(latest_sha)
+        print("Initialized last_commit.txt with current SHA.")
+        return None
+
+    if last_sha != latest_sha:
+        save_last_commit(latest_sha)
+        commit_msg = latest["commit"]["message"]
+        author = latest["commit"]["author"]["name"]
+        date = latest["commit"]["author"]["date"]
+        commit_url = latest["html_url"]
+        return f"New commit by {author} on {date}:\n\n\"{commit_msg}\"\n\nView the change: {commit_url}"
+
+    return None
 
 # Send email notification
 def send_email(body):
-    sender_email, sender_pw = get_credentials("credentials.txt")
+    sender_email, sender_pw = get_credentials(CREDS_FILE)
     receiver_email = sender_email
     subject = "New Roles Available"
 
