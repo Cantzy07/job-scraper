@@ -4,27 +4,29 @@ from email.mime.text import MIMEText
 import os
 
 # GitHub API URL for the repository content
-GITHUB_REPO_API = "https://api.github.com/repos/speedyapply/2026-AI-College-Jobs/commits?path=NEW_GRAD_USA.md"
+GITHUB_REPO_API_ML = "https://api.github.com/repos/speedyapply/2026-AI-College-Jobs/commits?path=NEW_GRAD_USA.md"
+GITHUB_REPO_API_SWE = "https://api.github.com/repos/speedyapply/2026-SWE-College-Jobs/commits?path=NEW_GRAD_USA.md"
 
 # Use a fixed path next to this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LAST_FILE = os.path.join(BASE_DIR, "last_commit.txt")
+LAST_FILE_ML = os.path.join(BASE_DIR, "ai_ml_last_commit.txt")
+LAST_FILE_SWE = os.path.join(BASE_DIR, "swe_last_commit.txt")
 CREDS_FILE = os.path.join(BASE_DIR, "credentials.txt")
 
-def load_last_commit():
+def load_last_commit(file):
     try:
-        with open(LAST_FILE, "r") as f:
+        with open(file, "r") as f:
             return f.read().strip()
     except FileNotFoundError:
         return None
 
-def save_last_commit(commit_hash):
-    with open(LAST_FILE, "w") as f:
+def save_last_commit(file, commit_hash):
+    with open(file, "w") as f:
         f.write(commit_hash)
 
-def check_for_updates():
+def check_for_updates(repo_api, last_file):
     try:
-        resp = requests.get(GITHUB_REPO_API, timeout=15)
+        resp = requests.get(repo_api, timeout=15)
     except Exception as e:
         print(f"Request error: {e}")
         return None
@@ -44,16 +46,16 @@ def check_for_updates():
         print("Latest commit SHA missing.")
         return None
 
-    last_sha = load_last_commit()
+    last_sha = load_last_commit(last_file)
 
     # First run: persist the current SHA so the file always exists
     if last_sha is None:
-        save_last_commit(latest_sha)
+        save_last_commit(last_file, latest_sha)
         print("Initialized last_commit.txt with current SHA.")
         return None
 
     if last_sha != latest_sha:
-        save_last_commit(latest_sha)
+        save_last_commit(last_file, latest_sha)
         commit_msg = latest["commit"]["message"]
         author = latest["commit"]["author"]["name"]
         date = latest["commit"]["author"]["date"]
@@ -66,7 +68,7 @@ def check_for_updates():
 def send_email(body):
     sender_email, sender_pw = get_credentials(CREDS_FILE)
     receiver_email = sender_email
-    subject = "New Roles Available"
+    subject = "New Roles Available for AI/ML"
 
     msg = MIMEText(body)
     msg['Subject'] = subject
@@ -95,10 +97,15 @@ def get_credentials(file_path):
 
 # Main function
 if __name__ == "__main__":
-    changes = check_for_updates()
-    if changes != None:
-        send_email(changes)
-        print("Email sent!")
+    ml_changes = check_for_updates(GITHUB_REPO_API_ML, LAST_FILE_ML)
+    swe_changes = check_for_updates(GITHUB_REPO_API_SWE, LAST_FILE_SWE)
+
+    if ml_changes != None:
+        send_email(ml_changes)
+        print("Email sent for ML/AI repo!")
+    elif swe_changes != None:
+        send_email(ml_changes)
+        print("Email sent for SWE repo!")
     else:
         print("No new updates.")
 
